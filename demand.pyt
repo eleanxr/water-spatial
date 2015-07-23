@@ -123,30 +123,20 @@ class StructureDemandTool(object):
 
     def execute(self, parameters, messages):
         """The source code of the tool."""
-        # FIXME There has to be a better way to access the parameters.
-        # Inputs
-        pods = parameters[0].valueAsText
-        catchments = parameters[1].valueAsText
-        streams = parameters[2].valueAsText
-        structures = parameters[3].valueAsText
-        properties = parameters[4].valueAsText
-
-        # Outputs
-        riparian_properties = parameters[5].valueAsText
-        undeclared_riparian = parameters[6].valueAsText
+        pmap = {p.name: p.valueAsText for p in parameters}
 
         # a. Spatial join property data to stream data (riparian frontage)
         findRiparianProperties(
-            properties,
-            streams,
-            riparian_properties)
+            pmap['properties'],
+            pmap['streams'],
+            pmap['riparian_properties'])
 
-        messages.addMessage("%s properties have riparian frontage" % countFeatures(riparian_properties))
+        messages.addMessage("%s properties have riparian frontage" % countFeatures(pmap['riparian_properties']))
 
         # b. Filter properties with existing POD whose owner matches the property owner
-        removeRiparianWithPOD(riparian_properties, pods, undeclared_riparian, messages)
+        removeRiparianWithPOD(pmap['riparian_properties'], pmap['pods'], pmap['undeclared_riparian'], messages)
 
-        messages.addMessage("%s properties with undeclared riparian rights" % countFeatures(undeclared_riparian))
+        messages.addMessage("%s properties with undeclared riparian rights" % countFeatures(pmap['undeclared_riparian']))
         # c. Assign generated application IDs to remaining properties.
 
         # d. Spatial join all PODs (real & generated) with parcels
