@@ -2,6 +2,7 @@ import arcpy
 
 import numpy as np
 import string
+import os
 
 # Replace a layer/table view name with a path to a dataset (which can be a layer file) or create the layer/table view within the script
 # The following inputs are layers or table views: "Structure_Catchment", "Properties_Riparian"
@@ -104,6 +105,13 @@ class StructureDemandTool(object):
                 parameterType = "Required",
                 direction = "Output"
             ),
+            arcpy.Parameter(
+                displayName = "Synthesized Riparian PODs",
+                name = "synthesized_pods",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Output"
+            ),
         ]
 
     def isLicensed(self):
@@ -137,13 +145,9 @@ class StructureDemandTool(object):
         removeRiparianWithPOD(pmap['riparian_properties'], pmap['pods'], pmap['undeclared_riparian'], messages)
 
         messages.addMessage("%s properties with undeclared riparian rights" % countFeatures(pmap['undeclared_riparian']))
+
         # c. Assign generated application IDs to remaining properties.
-
-        # d. Spatial join all PODs (real & generated) with parcels
-
-        # e. Spatial join structure data to parcel data.
-
-        # f. Join (d) and (e) on parcel ID.
+        createSynthesizedPODs(pmap, messages)
 
         return
 
@@ -176,6 +180,38 @@ def removeRiparianWithPOD(riparianProperties, pods, undeclaredRiparian, messages
 
     arcpy.Select_analysis(data, undeclaredRiparian,
         """ Similarity < 0.001 """);
+
+def createSynthesizedPODs(pmap, messages):
+    # We want only the ones with structures on them.
+    withStructures = 'in_memory\\with_structures'
+    arcpy.SpatialJoin_analysis(
+        pmap['undeclared_riparian'],
+        pmap['structures'],
+        withStructures,
+        'JOIN_ONE_TO_ONE',
+        'KEEP_COMMON'
+    )
+
+    messages.addMessage("%s riparian properties with no POD contain structures" % countFeatures(withStructures))
+
+    desc = arcpy.Describe(withStructures)
+    source = arcpy.da.SearchCursor(withStructures, "SHAPE@XY")
+    points = []
+    for feature in source:
+        points.append(feature[0])
+
+    arcpy.CreateFeatureclass_management(
+        os.path.dirname(pmap['synthesized_pods']),
+        os.path.basename(pmap['synthesized_pods']),
+        'POINT',
+        spatial_reference = desc.spatialReference
+    )
+    arcpy.AddField_management(pmap['synthesized_pods'], "POD_ID", "STRING")
+    out = arcpy.da.InsertCursor(pmap['synthesized_pods'], ["SHAPE@XY", "POD_ID"])
+    count = 0
+    for point in points:
+        out.insertRow([point, "SYNTH%03d" % count])
+        count = count + 1
 
 def countFeatures(layer):
     result = arcpy.GetCount_management(layer)
