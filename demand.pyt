@@ -195,10 +195,10 @@ def createSynthesizedPODs(pmap, messages):
     messages.addMessage("%s riparian properties with no POD contain structures" % countFeatures(withStructures))
 
     desc = arcpy.Describe(withStructures)
-    source = arcpy.da.SearchCursor(withStructures, "SHAPE@XY")
+    source = arcpy.da.SearchCursor(withStructures, ["SHAPE@XY", "OWNER", "TARGET_FID"])
     points = []
     for feature in source:
-        points.append(feature[0])
+        points.append(feature)
 
     arcpy.CreateFeatureclass_management(
         os.path.dirname(pmap['synthesized_pods']),
@@ -207,10 +207,12 @@ def createSynthesizedPODs(pmap, messages):
         spatial_reference = desc.spatialReference
     )
     arcpy.AddField_management(pmap['synthesized_pods'], "POD_ID", "STRING")
-    out = arcpy.da.InsertCursor(pmap['synthesized_pods'], ["SHAPE@XY", "POD_ID"])
+    arcpy.AddField_management(pmap['synthesized_pods'], "OWNER", "STRING")
+    arcpy.AddField_management(pmap['synthesized_pods'], "PARCEL_ID", "STRING")
+    out = arcpy.da.InsertCursor(pmap['synthesized_pods'], ["SHAPE@XY", "OWNER", "PARCEL_ID", "POD_ID"])
     count = 0
     for point in points:
-        out.insertRow([point, "SYNTH%03d" % count])
+        out.insertRow([point[0], point[1], point[2], "SYNTH%03d" % count])
         count = count + 1
 
 def countFeatures(layer):
