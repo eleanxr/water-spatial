@@ -1,5 +1,8 @@
 import arcpy
 
+import numpy as np
+import string
+
 # Replace a layer/table view name with a path to a dataset (which can be a layer file) or create the layer/table view within the script
 # The following inputs are layers or table views: "Structure_Catchment", "Properties_Riparian"
 # arcpy.SpatialJoin_analysis(target_features="Structure_Catchment",join_features="Properties_Riparian",out_feature_class="Z:/Water Transactions SNAP/Data/Navarro River/Navarro Model - Mill.gdb/Structures_RiparianFrontage",join_operation="JOIN_ONE_TO_MANY",join_type="KEEP_COMMON",field_mapping="""Structure "Structure" true true false 5 Text 0 0 ,First,#,Structure_Catchment,Structure,-1,-1;SummerGPD "SummerGPD" true true false 2 Short 0 0 ,First,#,Structure_Catchment,SummerGPD,-1,-1;WinterGPD "WinterGPD" true true false 2 Short 0 0 ,First,#,Structure_Catchment,WinterGPD,-1,-1;SummerAF "SummerAF" true true false 8 Double 0 0 ,First,#,Structure_Catchment,SummerAF,-1,-1;WinterAF "WinterAF" true true false 8 Double 0 0 ,First,#,Structure_Catchment,WinterAF,-1,-1;Total_AcFt "Total_AcFt" true true false 8 Double 0 0 ,First,#,Structure_Catchment,Total_AcFt,-1,-1;GRIDCODE "GRIDCODE" true true false 4 Long 0 0 ,First,#,Structure_Catchment,GRIDCODE,-1,-1;FEATUREID "FEATUREID" true true false 4 Long 0 0 ,First,#,Structure_Catchment,FEATUREID,-1,-1;SOURCEFC "SOURCEFC" true true false 20 Text 0 0 ,First,#,Structure_Catchment,SOURCEFC,-1,-1;AreaSqKM "AreaSqKM" true true false 8 Double 0 0 ,First,#,Structure_Catchment,AreaSqKM,-1,-1;PARCEL_ID "PARCEL_ID" true true false 4 Long 0 0 ,First,#,Properties_Riparian,PARCEL_ID,-1,-1;OWNER "OWNER" true true false 50 Text 0 0 ,First,#,Properties_Riparian,OWNER,-1,-1;Acres "Acres" true true false 8 Double 0 0 ,First,#,Properties_Riparian,Acres,-1,-1""",match_option="INTERSECT",search_radius="#",distance_field_name="#")
@@ -49,6 +52,7 @@ class StructureDemandTool(object):
     def getParameterInfo(self):
         """Define parameter definitions"""
         return [
+            # Input Parameters
             arcpy.Parameter(
                 displayName = "Points of diversion",
                 name = "pods",
@@ -84,6 +88,22 @@ class StructureDemandTool(object):
                 parameterType = "Required",
                 direction = "Input"
             ),
+
+            # Output Parameters
+            arcpy.Parameter(
+                displayName = "Riparian Properties",
+                name = "riparian_properties",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Output"
+            ),
+            arcpy.Parameter(
+                displayName = "Undeclared Riparian Rights",
+                name = "undeclared_riparian",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Output"
+            ),
         ]
 
     def isLicensed(self):
@@ -103,4 +123,96 @@ class StructureDemandTool(object):
 
     def execute(self, parameters, messages):
         """The source code of the tool."""
+        # FIXME There has to be a better way to access the parameters.
+        # Inputs
+        pods = parameters[0].valueAsText
+        catchments = parameters[1].valueAsText
+        streams = parameters[2].valueAsText
+        structures = parameters[3].valueAsText
+        properties = parameters[4].valueAsText
+
+        # Outputs
+        riparian_properties = parameters[5].valueAsText
+        undeclared_riparian = parameters[6].valueAsText
+
+        # a. Spatial join property data to stream data (riparian frontage)
+        findRiparianProperties(
+            properties,
+            streams,
+            riparian_properties)
+
+        messages.addMessage("%s properties have riparian frontage" % countFeatures(riparian_properties))
+
+        # b. Filter properties with existing POD whose owner matches the property owner
+        removeRiparianWithPOD(riparian_properties, pods, undeclared_riparian, messages)
+
+        messages.addMessage("%s properties with undeclared riparian rights" % countFeatures(undeclared_riparian))
+        # c. Assign generated application IDs to remaining properties.
+
+        # d. Spatial join all PODs (real & generated) with parcels
+
+        # e. Spatial join structure data to parcel data.
+
+        # f. Join (d) and (e) on parcel ID.
+
         return
+
+def findRiparianProperties(propertyLayer, streamLayer, outputLayer):
+    target = propertyLayer
+    join = streamLayer
+    output = outputLayer
+    arcpy.SpatialJoin_analysis(target, join, output,
+        "JOIN_ONE_TO_ONE", "KEEP_COMMON")
+
+def removeRiparianWithPOD(riparianProperties, pods, undeclaredRiparian, messages):
+    data = "in_memory\\removeRiparianWithPOD"
+    # Join riparian properties to PODs
+    arcpy.SpatialJoin_analysis(
+        riparianProperties,
+        pods,
+        data,
+        "JOIN_ONE_TO_MANY",
+        "KEEP_ALL"
+    )
+
+    messages.addMessage("%s PODs lie on riparian properties" % countFeatures(data))
+
+    # Add an attribute with a name similarity index
+    arcpy.AddField_management(data, "Similarity", "DOUBLE", 7, 6)
+    cursor = arcpy.UpdateCursor(data)
+    for row in cursor:
+        row.setValue("Similarity", float(compare_owner_holder(row)))
+        cursor.updateRow(row)
+
+    arcpy.Select_analysis(data, undeclaredRiparian,
+        """ Similarity < 0.001 """);
+
+def countFeatures(layer):
+    result = arcpy.GetCount_management(layer)
+    return int(result.getOutput(0))
+
+def compare_owner_holder(row):
+    """Assign a similarity index to a property OWNER and a water right HolderName.
+
+    This function builds a term frequency vector from the words in each name
+    and computes cosine similarity to determine the similarity between two
+    names. Returns a number between 0 and 1, with 0 indicating a complete
+    mismatch and 1 indicating a perfect match. Intermediate values increase
+    to 1 with increasing probability of a match.
+    """
+    if row.isNull("OWNER") or row.isNull("HolderName"):
+        return 0.0
+
+    ownerValue = str(row.getValue("OWNER"))
+    holderValue = str(row.getValue("HolderName"))
+
+    owner = set(ownerValue.lower().translate(None, string.punctuation).split())
+    holder = set(holderValue.lower().translate(None, string.punctuation).split())
+    terms = owner.union(holder)
+
+    owner_freq = map(lambda t: 1 if t in owner else 0, terms)
+    holder_freq = map(lambda t: 1 if t in holder else 0, terms)
+
+    num = np.dot(owner_freq, holder_freq)
+    denom = np.linalg.norm(owner_freq) * np.linalg.norm(holder_freq)
+    return num/denom
