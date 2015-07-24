@@ -81,13 +81,16 @@ def createSynthesizedPODs(pmap, messages):
         'POINT',
         spatial_reference = desc.spatialReference
     )
+    arcpy.AddField_management(pmap['synthesized_pods'], "APPL_ID", "STRING")
     arcpy.AddField_management(pmap['synthesized_pods'], "POD_ID", "STRING")
     arcpy.AddField_management(pmap['synthesized_pods'], "OWNER", "STRING")
     arcpy.AddField_management(pmap['synthesized_pods'], "PARCEL_ID", "STRING")
-    out = arcpy.da.InsertCursor(pmap['synthesized_pods'], ["SHAPE@XY", "OWNER", "PARCEL_ID", "POD_ID"])
+    out = arcpy.da.InsertCursor(pmap['synthesized_pods'],
+        ["SHAPE@XY", "OWNER", "PARCEL_ID", "POD_ID", "APPL_ID"])
     count = 0
     for point in points:
-        out.insertRow([point[0], point[1], point[2], "SYNTH%03d" % count])
+        podid = "SYNTH%03d" % count
+        out.insertRow([point[0], point[1], point[2], podid, podid])
         count = count + 1
 
 def countFeatures(layer):
@@ -118,4 +121,4 @@ def compare_owner_holder(row):
 
     num = np.dot(owner_freq, holder_freq)
     denom = np.linalg.norm(owner_freq) * np.linalg.norm(holder_freq)
-    return num/denom
+    return num/denomdef createStructureDemandTable(structures, registered_pods, synthesized_pods,    properties, catchments, structure_demand):    """    Creates a table of demand estimates for structures.        a. Spatial join all PODs (real & generated) with parcels        b. Spatial join structure data to parcel data.        c. Join (d) and (e) on parcel ID.    Resulting dataset will have the following columns:    - APPL_ID : Application ID    - POD_ID : POD ID    - OWNER : OWNER of the right    - PARCEL_ID : Parcel on which the structure lies    - STRUCTURE_ID : Unique identifier for each structure.    - WinterAF : Winter demand in af/day    - SummerAF : Summer demand in af/day    - FEATUREID : Catchment basin in which the structure lies.    """    # Join structures to parcels.    structureParcels = "in_memory\\structure_parcels"    SpatialJoin_analysis(structures, properties, structureParcels,        "JOIN_ONE_TO_MANY", "KEEP_ALL")    # Assign structures to synthesized PODs for undeclared riparian rights    # Assign structures to real PODs for declared rights.    # Merge the two tables

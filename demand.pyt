@@ -161,8 +161,52 @@ class StructureDemandEstimateTool(object):
 
     def getParameterInfo(self):
         """Define parameter definitions"""
-        params = None
-        return params
+        return [
+            arcpy.Parameter(
+                displayName = "Structures",
+                name = "structures",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Input"
+            ),
+            arcpy.Parameter(
+                displayName = "Registered PODs",
+                name = "registered_pods",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Input"
+            ),
+            arcpy.Parameter(
+                displayName = "Synthesized PODs",
+                name = "synthesized_pods",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Input"
+            ),
+            arcpy.Parameter(
+                displayName = "Properties",
+                name = "properties",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Input"
+            ),
+            arcpy.Parameter(
+                displayName = "Catchments",
+                name = "catchments",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Input"
+            ),
+
+            # Outputs
+            arcpy.Parameter(
+                displayName = "Structure Demand Estimate",
+                name = "structure_demand",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Output"
+            ),
+        ]
 
     def isLicensed(self):
         """Set whether tool is licensed to execute."""
@@ -181,4 +225,14 @@ class StructureDemandEstimateTool(object):
 
     def execute(self, parameters, messages):
         """The source code of the tool."""
+        reload(watertool.demand)
+        pmap = {p.name : p for p in parameters}
+        watertool.demand.createStructureDemandTable(
+            pmap['structures'].valueAsText,
+            pmap['registered_pods'].valueAsText,
+            pmap['synthesized_pods'].valueAsText,
+            pmap['properties'].valueAsText,
+            pmap['catchments'].valueAsText,
+            pmap['structure_demand'].valueAsText
+        )
         return
