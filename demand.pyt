@@ -170,29 +170,8 @@ class StructureDemandEstimateTool(object):
                 direction = "Input"
             ),
             arcpy.Parameter(
-                displayName = "Registered PODs",
-                name = "registered_pods",
-                datatype = "GPFeatureLayer",
-                parameterType = "Required",
-                direction = "Input"
-            ),
-            arcpy.Parameter(
-                displayName = "Synthesized PODs",
-                name = "synthesized_pods",
-                datatype = "GPFeatureLayer",
-                parameterType = "Required",
-                direction = "Input"
-            ),
-            arcpy.Parameter(
                 displayName = "Properties",
                 name = "properties",
-                datatype = "GPFeatureLayer",
-                parameterType = "Required",
-                direction = "Input"
-            ),
-            arcpy.Parameter(
-                displayName = "Catchments",
-                name = "catchments",
                 datatype = "GPFeatureLayer",
                 parameterType = "Required",
                 direction = "Input"
@@ -229,10 +208,7 @@ class StructureDemandEstimateTool(object):
         pmap = {p.name : p for p in parameters}
         watertool.demand.createStructureDemandTable(
             pmap['structures'].valueAsText,
-            pmap['registered_pods'].valueAsText,
-            pmap['synthesized_pods'].valueAsText,
             pmap['properties'].valueAsText,
-            pmap['catchments'].valueAsText,
             pmap['structure_demand'].valueAsText
         )
         return
