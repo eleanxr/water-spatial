@@ -33,6 +33,81 @@ def findRiparianProperties(propertyLayer, streamLayer, outputLayer):
     arcpy.SpatialJoin_analysis(target, join, output,
         "JOIN_ONE_TO_ONE", "KEEP_COMMON")
 
+def assignStructurePODs(pods, properties, structures, output, messages):
+    # Join PODs and properties.
+    podsProperties = "in_memory\\pods_properties"
+    podFields = {
+        (pods, "APPL_ID"): ("APPL_ID", "STRING"),
+        (pods, "POD_ID"): ("POD_ID", "STRING"),
+        (properties, "TARGET_FID"): ("PARCEL_ID", "STRING"),
+        (pods, "FEATUREID"): ("FEATUREID", "LONG"),
+        (pods, "HolderName"): ("HolderName", "STRING"),
+        (properties, "OWNER"): ("OWNER", "STRING")
+    }
+    podFieldMapping = createSimpleFieldMapping(podFields)
+    arcpy.SpatialJoin_analysis(pods, properties, podsProperties,
+        "JOIN_ONE_TO_ONE", "KEEP_COMMON", field_mapping=podFieldMapping)
+    
+    # Add an attribute with a name similarity index
+    arcpy.AddField_management(podsProperties, "Similarity", "DOUBLE", 7, 6)
+    cursor = arcpy.UpdateCursor(podsProperties)
+    for row in cursor:
+        row.setValue("Similarity", float(compare_owner_holder(row)))
+        cursor.updateRow(row)
+        
+    # Join structures and properties
+    structuresProperties = output
+    structFields = {
+        (structures, "OBJECTID"): ("STRUCT_ID", "LONG"),
+        (properties, "TARGET_FID"): ("PARCEL_ID", "STRING"),
+        (structures, "WinterAF"): ("WinterAF", "FLOAT"),
+        (structures, "SummerAF"): ("SummerAF", "FLOAT"),
+        (properties, "OWNER"): ("OWNER", "STRING"),
+        (structures, "FEATUREID"): ("FEATUREID", "LONG"),
+    }
+    structFieldMapping = createSimpleFieldMapping(structFields)
+    arcpy.SpatialJoin_analysis(structures, properties, structuresProperties,
+        "JOIN_ONE_TO_ONE", "KEEP_COMMON", field_mapping=structFieldMapping)
+    
+    # Create a new table to hold our results.
+    columns = [
+        ("APPL_ID", "STRING"),
+        ("POD_ID", "STRING"),
+    ]
+    for name, datatype in columns:
+        arcpy.AddField_management(structuresProperties, name, datatype)
+    update = arcpy.UpdateCursor(structuresProperties)
+    temp = "in_memory\\temp_selection"
+    synthCount = 0
+    for row in update:
+        where = """ PARCEL_ID = '%s' """ % row.PARCEL_ID
+        search = arcpy.SearchCursor(podsProperties, where)
+        found = {}
+        for pod in search:
+            if pod.getValue("Similarity") > 0.0:
+                for name, datatype in columns:
+                    found[name] = pod.getValue(name)
+        if found:
+            for name, value in found.iteritems():
+                row.setValue(name, value)
+        else:
+            fakeId = "SYNTH%03d" % synthCount
+            row.setValue("APPL_ID", fakeId)
+            row.setValue("POD_ID", fakeId)
+        update.updateRow(row)
+
+def createFeatureclass(location, geomType, spatialReference, columns):
+    """Create a new featureclass at location with the specified columns."""
+    arcpy.CreateFeatureclass_management(
+        os.path.dirname(location),
+        os.path.basename(location),
+        geomType,
+        spatial_reference = spatialReference
+    )
+    for name, columnType in columns:
+        arcpy.AddField_management(location, name, columnType)
+
+
 def removeRiparianWithPOD(riparianProperties, pods, undeclaredRiparian, messages):
     data = "in_memory\\removeRiparianWithPOD"
     # Join riparian properties to PODs
@@ -146,7 +221,7 @@ def createStructureDemandTable(structures, properties, structure_demand):
     arcpy.SpatialJoin_analysis(structures, properties, structure_demand,
         "JOIN_ONE_TO_MANY", "KEEP_ALL", field_mapping=fieldMapping)
 
-    def createSimpleFieldMapping(d, mappings=None):
+def createSimpleFieldMapping(d, mappings=None):
     """Create an arcpy FieldMapping given a dictionary.
 
     Handles the simple case where column values should be taken verbatim from

@@ -37,7 +37,11 @@ class Toolbox(object):
         self.label = "Water Demand"
         self.alias = ""
 
-        self.tools = [UndeclaredRiparianTool, StructureDemandEstimateTool]
+        self.tools = [
+            UndeclaredRiparianTool,
+            StructureDemandEstimateTool,
+            StructureDemandPodTool,
+        ]
 
 class UndeclaredRiparianTool(object):
     """
@@ -210,5 +214,76 @@ class StructureDemandEstimateTool(object):
             pmap['structures'].valueAsText,
             pmap['properties'].valueAsText,
             pmap['structure_demand'].valueAsText
+        )
+        return
+
+class StructureDemandPodTool(object):
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = "Assign structure demand to PODs."
+        self.description = "Estimates structure demand associated with PODs and catchments."
+        self.canRunInBackground = False
+
+    def getParameterInfo(self):
+        """Define parameter definitions"""
+        return [
+            # Inputs
+            arcpy.Parameter(
+                displayName = "PODs",
+                name = "pods",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Input"
+            ),
+            arcpy.Parameter(
+                displayName = "Structures",
+                name = "structures",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Input"
+            ),
+            arcpy.Parameter(
+                displayName = "Properties",
+                name = "properties",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Input"
+            ),
+
+            # Outputs
+            arcpy.Parameter(
+                displayName = "Structure Demand Estimate with POD",
+                name = "structure_demand_pod",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Output"
+            ),
+        ]
+
+    def isLicensed(self):
+        """Set whether tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+        return
+
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter.  This method is called after internal validation."""
+        return
+
+    def execute(self, parameters, messages):
+        """The source code of the tool."""
+        reload(watertool.demand)
+        pmap = {p.name : p for p in parameters}
+        watertool.demand.assignStructurePODs(
+            pmap['pods'].valueAsText,
+            pmap['properties'].valueAsText,
+            pmap['structures'].valueAsText,
+            pmap['structure_demand_pod'].valueAsText,
+            messages
         )
         return
