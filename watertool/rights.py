@@ -205,6 +205,7 @@ def get_structure_demand(pods, structures):
 
     The POD file is expected to have the following fields:
     PARCEL_ID : The parcel ID on which the POD lies.
+    FEATUREID : The NHD+V2 catchment ID in which the POD lies.
     APPL_ID : The water right application ID.
     """
     pod_data = util.read_dbf(pods)
