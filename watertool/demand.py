@@ -30,22 +30,32 @@ def findRiparianProperties(propertyLayer, streamLayer, outputLayer):
     target = propertyLayer
     join = streamLayer
     output = outputLayer
+    fields = {
+        (target, "FID"): ("PARCEL_ID", "LONG"),
+        (target, "OWNER"): ("OWNER", "STRING"),
+        (target, "Acres"): ("Acres", "DOUBLE")
+    }
+    fieldMapping = createSimpleFieldMapping(fields)
     arcpy.SpatialJoin_analysis(target, join, output,
-        "JOIN_ONE_TO_ONE", "KEEP_COMMON")
+        "JOIN_ONE_TO_ONE", "KEEP_COMMON", field_mapping=fieldMapping)
 
-def assignStructurePODs(pods, properties, structures, output, messages):
+def assignStructurePODs(pods, properties, structures, streams, output, messages):
+    # Find the riparian properties
+    riparian = "in_memory\\riparian_properties"
+    findRiparianProperties(properties, streams, riparian)
+    
     # Join PODs and properties.
     podsProperties = "in_memory\\pods_properties"
     podFields = {
         (pods, "APPL_ID"): ("APPL_ID", "STRING"),
         (pods, "POD_ID"): ("POD_ID", "STRING"),
-        (properties, "TARGET_FID"): ("PARCEL_ID", "STRING"),
+        (riparian, "PARCEL_ID"): ("PARCEL_ID", "LONG"),
         (pods, "FEATUREID"): ("FEATUREID", "LONG"),
         (pods, "HolderName"): ("HolderName", "STRING"),
-        (properties, "OWNER"): ("OWNER", "STRING")
+        (riparian, "OWNER"): ("OWNER", "STRING")
     }
     podFieldMapping = createSimpleFieldMapping(podFields)
-    arcpy.SpatialJoin_analysis(pods, properties, podsProperties,
+    arcpy.SpatialJoin_analysis(pods, riparian, podsProperties,
         "JOIN_ONE_TO_ONE", "KEEP_COMMON", field_mapping=podFieldMapping)
     
     # Add an attribute with a name similarity index
@@ -59,14 +69,14 @@ def assignStructurePODs(pods, properties, structures, output, messages):
     structuresProperties = output
     structFields = {
         (structures, "OBJECTID"): ("STRUCT_ID", "LONG"),
-        (properties, "TARGET_FID"): ("PARCEL_ID", "STRING"),
+        (riparian, "PARCEL_ID"): ("PARCEL_ID", "LONG"),
         (structures, "WinterAF"): ("WinterAF", "FLOAT"),
         (structures, "SummerAF"): ("SummerAF", "FLOAT"),
-        (properties, "OWNER"): ("OWNER", "STRING"),
+        (riparian, "OWNER"): ("OWNER", "STRING"),
         (structures, "FEATUREID"): ("FEATUREID", "LONG"),
     }
     structFieldMapping = createSimpleFieldMapping(structFields)
-    arcpy.SpatialJoin_analysis(structures, properties, structuresProperties,
+    arcpy.SpatialJoin_analysis(structures, riparian, structuresProperties,
         "JOIN_ONE_TO_ONE", "KEEP_COMMON", field_mapping=structFieldMapping)
     
     # Create a new table to hold our results.
@@ -80,7 +90,7 @@ def assignStructurePODs(pods, properties, structures, output, messages):
     temp = "in_memory\\temp_selection"
     synthCount = 0
     for row in update:
-        where = """ PARCEL_ID = '%s' """ % row.PARCEL_ID
+        where = """ PARCEL_ID = %d """ % row.PARCEL_ID
         search = arcpy.SearchCursor(podsProperties, where)
         found = {}
         for pod in search:

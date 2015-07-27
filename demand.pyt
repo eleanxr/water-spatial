@@ -249,6 +249,13 @@ class StructureDemandPodTool(object):
                 parameterType = "Required",
                 direction = "Input"
             ),
+            arcpy.Parameter(
+                displayName = "Streams",
+                name = "streams",
+                datatype = "GPFeatureLayer",
+                parameterType = "Required",
+                direction = "Input"
+            ),
 
             # Outputs
             arcpy.Parameter(
@@ -283,6 +290,7 @@ class StructureDemandPodTool(object):
             pmap['pods'].valueAsText,
             pmap['properties'].valueAsText,
             pmap['structures'].valueAsText,
+            pmap['streams'].valueAsText,
             pmap['structure_demand_pod'].valueAsText,
             messages
         )
