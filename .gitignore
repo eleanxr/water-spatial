@@ -1,3 +1,4 @@
 env
 *.pyc
 *.pyt.xml
+*.egg-info

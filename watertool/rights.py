@@ -178,7 +178,7 @@ def get_ag_demand(use_file, pod_file):
     pod_file : string
         The name of the file with the POD locations joined to their catchment.
     """
-    use_data = pd.read_excel(use_file, use_sheet)
+    use_data = pd.read_csv(use_file)
 
     pod_data = util.read_dbf(pod_file)
 
@@ -229,6 +229,24 @@ def get_structure_demand(pods, structures):
             'WinterAF': np.sum
             })
 
+def get_structure_demand_prepared(database):
+    """Read already prepared POD-Structure demand table."""
+    data = util.read_dbf(database)
+    
+    columns = [
+        'APPL_ID',
+        'STRUCT_ID',
+        'SummerAF',
+        'WinterAF',
+        'FEATUREID',
+    ]
+    
+    return data[columns].groupby('APPL_ID').agg({
+        'SummerAF': np.sum,
+        'WinterAF': np.sum,
+        'FEATUREID': lambda x: x.iloc[0],
+    })
+
 def merge_ag_structure(ag_demand, structure_demand):
     """Merge agricultural and structure use data on Application ID
 
@@ -236,7 +254,18 @@ def merge_ag_structure(ag_demand, structure_demand):
     """
     join = pd.merge(ag_demand, structure_demand,
                     left_index=True, right_index=True,
-                    how='outer')
+                    how='outer', suffixes=('_ag', '_struct'))
+    
+    # Reconcile ag/struct featureids by favoring ag.
+    def choose_featureid(row):
+        if not pd.isnull(row['FEATUREID_ag']):
+            return row['FEATUREID_ag']
+        elif not pd.isnull(row['FEATUREID_struct']):
+            return row['FEATUREID_struct']
+        else:
+            return None
+    join['FEATUREID'] = join.apply(choose_featureid, axis=1)
+    
     return join
 
 def add_rights_info(demand, ewrims_file):
